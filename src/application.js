@@ -20,6 +20,12 @@ import {Window} from './window.js';
 const EXTENSION_UUID = 'time-tracker@sharjeelmazhar.github.io';
 const IDLE_MS = 20000;
 const BACKUP_NAME = 'timetracker-backup.json';
+// While a timer runs, the backups are refreshed this often, so that even if this computer
+// is lost for good, no more than about a minute of the running session goes with it.
+const BACKUP_EVERY_BEATS = 60 / HEARTBEAT_SECONDS;
+// a failed online backup is tried again this often, this many times
+const RETRY_SECONDS = 60;
+const RETRY_LIMIT = 10;
 
 const TIMER_IFACE = `
 <node>
@@ -51,6 +57,9 @@ class Application extends Adw.Application {
         this._held = false;
         this._beatId = 0;
         this._backupId = 0;
+        this._retryId = 0;
+        this._retries = 0;
+        this._beats = 0;
         this.backupError = null;
         this.onlineError = null;
         this.onlineSavedAt = 0;
@@ -77,6 +86,8 @@ class Application extends Adw.Application {
         this._notifyIfStopped(this.store.reconcile());
         this.store.subscribe(() => this._onStoreChanged());
         this._syncHold();
+        // catches up on anything a previous run could not upload
+        this._scheduleBackup();
 
         this._loadStyles();
         this._addAction('preferences', () => new PreferencesDialog(this.store).present(this.activeWindow));
@@ -135,9 +146,30 @@ class Application extends Adw.Application {
         this.hold();
         this._backupId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
             this._backupId = 0;
-            const text = this.store.serialize();
-            Promise.all([this._writeFolderBackup(text), this._writeOnlineBackup(text)])
-                .finally(() => this.release());
+            const text = this.store.backupText();
+            Promise.all([this._writeFolderBackup(text), this._writeOnlineBackup(text)]).finally(() => {
+                this._retryIfNeeded();
+                this.release();
+            });
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // No internet, GitHub down: try again in a while, staying alive to do it. Giving up
+    // after a few tries is fine, because every start of the app backs up again.
+    _retryIfNeeded() {
+        if (!this.onlineError) {
+            this._retries = 0;
+            return;
+        }
+        if (this._retryId || this._retries >= RETRY_LIMIT)
+            return;
+        this._retries++;
+        this.hold();
+        this._retryId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, RETRY_SECONDS, () => {
+            this._retryId = 0;
+            this._scheduleBackup();
+            this.release();
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -229,6 +261,8 @@ class Application extends Adw.Application {
     _beat() {
         // after a suspend this fires late, and reconcile() ends the session where it really ended
         this._notifyIfStopped(this.store.reconcile());
+        if (this.store.running && ++this._beats % BACKUP_EVERY_BEATS === 0)
+            this._scheduleBackup();
         if (this._day !== startOfDay()) {
             this._day = startOfDay();
             this._emitChanged();

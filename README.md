@@ -71,6 +71,11 @@ To keep your history across a reinstall, set up a backup in Preferences:
 
 Both are copies, not two-way sync: the computer you are working on is always the source.
 
+Backups are written about two seconds after every change, and once a minute while a timer
+is running. If the computer is lost for good in the middle of a session, restoring ends
+that session at the last backup, so at most about a minute of it is gone. An upload that
+fails (no internet) is retried every minute for a while, and again whenever the app starts.
+
 ## How it fits together
 
 | Path | What it is |

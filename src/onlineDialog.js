@@ -67,7 +67,7 @@ class OnlineBackupDialog extends Adw.Dialog {
 
         const id = await findBackup(token);
         if (!id) {
-            this._app.connectOnline(token, await createBackup(token, this._store.serialize()));
+            this._app.connectOnline(token, await createBackup(token, this._store.backupText()));
             this.close();
             return;
         }

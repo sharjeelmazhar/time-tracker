@@ -63,6 +63,12 @@ export class Store {
         return JSON.stringify(this.data, null, 1);
     }
 
+    // What goes into a backup: the data, stamped with the moment it was written. A timer
+    // that is running is known to have been running at least until then.
+    backupText() {
+        return JSON.stringify({...this.data, savedAt: nowSec()}, null, 1);
+    }
+
     // Throws unless `text` is a backup; returns a short description of what is in it.
     checkBackup(text) {
         const parsed = JSON.parse(text);
@@ -75,15 +81,18 @@ export class Store {
     // Replace everything with the contents of a backup.
     restore(text) {
         this.checkBackup(text);
-        const parsed = JSON.parse(text);
+        const {savedAt, ...parsed} = JSON.parse(text);
         // what belongs to this computer rather than to the history stays as it is
         const {extensionSetupDone, backupFolder, gistId} = this.data.settings;
         this.data = {
             ...emptyData(), ...parsed,
             settings: {...emptyData().settings, ...parsed.settings, extensionSetupDone, backupFolder, gistId},
         };
-        // a timer that was running when the backup was written is not running here
-        this.data.entries = this.data.entries.filter(e => e.end !== null);
+        // A timer that was running when the backup was written is not running here: its
+        // session ends at the moment of the backup, the last time it was known to be going.
+        for (const entry of this.data.entries.filter(e => e.end === null))
+            entry.end = savedAt > entry.start ? savedAt : entry.start;
+        this.data.entries = this.data.entries.filter(e => e.end > e.start);
         this._changed();
     }
 
