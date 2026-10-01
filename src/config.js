@@ -1,7 +1,7 @@
 import GLib from 'gi://GLib';
 
 export const APP_ID = 'io.github.sharjeelmazhar.TimeTracker';
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 export const AUTHOR = 'Sharjeel M. Rajput';
 export const AUTHOR_URL = 'https://github.com/sharjeelmazhar';
 export const REPO_URL = 'https://github.com/sharjeelmazhar/time-tracker';

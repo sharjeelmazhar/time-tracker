@@ -5,7 +5,7 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import {APP_ID, AUTHOR, AUTHOR_URL, REPO_URL, SRC_DIR, VERSION} from './config.js';
-import {fmtDate, fmtTime, nowSec, parseDateTime} from './util.js';
+import {dateHint, fmtDate, fmtTime, nowSec, parseDateTime, systemFormats, timeHint} from './util.js';
 
 // Cancel on the left, the confirming button on the right, like every GNOME form dialog.
 function formHeader(dialog, saveLabel) {
@@ -136,9 +136,9 @@ class SessionDialog extends Adw.Dialog {
 
         const start = entry?.start ?? nowSec() - 3600;
         const end = entry?.end ?? nowSec();
-        this._date = new Adw.EntryRow({title: 'Date (YYYY-MM-DD)', text: fmtDate(start)});
-        this._start = new Adw.EntryRow({title: 'Started at (HH:MM)', text: fmtTime(start)});
-        this._end = new Adw.EntryRow({title: 'Stopped at (HH:MM)', text: fmtTime(end), visible: !this._isRunning});
+        this._date = new Adw.EntryRow({title: `Date (${dateHint()})`, text: fmtDate(start)});
+        this._start = new Adw.EntryRow({title: `Started at (like ${timeHint()})`, text: fmtTime(start)});
+        this._end = new Adw.EntryRow({title: `Stopped at (like ${timeHint()})`, text: fmtTime(end), visible: !this._isRunning});
         this._rows = [this._date, this._start, this._end];
 
         const times = new Adw.PreferencesGroup({
@@ -172,7 +172,8 @@ class SessionDialog extends Adw.Dialog {
         let end = this._isRunning ? null : parseDateTime(this._date.text, this._end.text);
 
         const bad = [];
-        if (parseDateTime(this._date.text, '00:00') === null)
+        // 13:00 is a valid time on either clock, so this checks the date alone
+        if (parseDateTime(this._date.text, '13:00') === null)
             bad.push(this._date);
         else if (start === null || start > nowSec())
             bad.push(this._start);
@@ -211,6 +212,27 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         });
         earnings.add(currency);
 
+        // each option is [stored value, label]; the subtitle says what "same as system" means now
+        const choice = (title, key, systemName, options) => {
+            const row = new Adw.ComboRow({
+                title,
+                subtitle: `System uses ${systemName}`,
+                model: Gtk.StringList.new(options.map(([, label]) => label)),
+            });
+            row.selected = Math.max(0, options.findIndex(([value]) => value === store.settings[key]));
+            row.connect('notify::selected', () => store.setSetting(key, options[row.selected][0]));
+            return row;
+        };
+        const system = systemFormats();
+        const dates = [['dmy', 'Day/Month/Year'], ['mdy', 'Month/Day/Year'], ['ymd', 'Year-Month-Day']];
+        const times = [['12h', '12-hour'], ['24h', '24-hour']];
+        const nameOf = (options, value) => options.find(([v]) => v === value)[1];
+        const formats = new Adw.PreferencesGroup({title: 'Date and Time'});
+        formats.add(choice('Date format', 'dateFormat', nameOf(dates, system.date),
+            [['system', 'Same as system'], ...dates]));
+        formats.add(choice('Time format', 'timeFormat', nameOf(times, system.time),
+            [['system', 'Same as system'], ...times]));
+
         const flatButton = (iconName, tooltipText, callback) => {
             const button = new Gtk.Button({iconName, tooltipText, valign: Gtk.Align.CENTER, cssClasses: ['flat']});
             button.connect('clicked', callback);
@@ -243,6 +265,7 @@ class PreferencesDialog extends Adw.PreferencesDialog {
 
         const page = new Adw.PreferencesPage();
         page.add(earnings);
+        page.add(formats);
         page.add(backup);
         this.add(page);
         this._syncBackupRow();

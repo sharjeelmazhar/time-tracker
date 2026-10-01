@@ -13,7 +13,7 @@ import Gtk from 'gi://Gtk?version=4.0';
 import {APP_ID, SRC_DIR} from './config.js';
 import {AboutDialog, PreferencesDialog} from './dialogs.js';
 import {HEARTBEAT_SECONDS, Store} from './store.js';
-import {fmtTime, startOfDay} from './util.js';
+import {configureFormats, fmtTime, startOfDay} from './util.js';
 import {Window} from './window.js';
 
 const EXTENSION_UUID = 'time-tracker@sharjeelmazhar.github.io';
@@ -69,6 +69,7 @@ class Application extends Adw.Application {
         super.vfunc_startup();
 
         this.store = new Store();
+        configureFormats(this.store.settings);
         this._day = startOfDay();
         this._notifyIfStopped(this.store.reconcile());
         this.store.subscribe(() => this._onStoreChanged());
@@ -114,6 +115,8 @@ class Application extends Adw.Application {
     // --- timer lifetime ----------------------------------------------------------------
 
     _onStoreChanged() {
+        // first, so everything redrawn by this change already uses the new formats
+        configureFormats(this.store.settings);
         this._syncHold();
         this._emitChanged();
         this._scheduleBackup();

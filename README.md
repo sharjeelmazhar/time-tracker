@@ -13,6 +13,8 @@ open the app to see how long you worked and, for paid projects, how much you ear
 - **Finish a project** to move it out of the way; reopen it any time.
 - **Export** a project's sessions as CSV.
 - **Backup**: pick a folder and a copy of your history is kept there after every change.
+- **Date and time format**: follows your system by default (12 or 24-hour clock, date
+  order), and can be changed in Preferences, for example to Day/Month/Year.
 - Follows the system light/dark style and accent colour.
 
 If the computer sleeps or shuts down while a timer is running, the session ends at that

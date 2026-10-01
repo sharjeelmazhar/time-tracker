@@ -13,7 +13,10 @@ const STALE_SECONDS = 150;
 
 const emptyData = () => ({
     version: VERSION,
-    settings: {currency: '$', extensionSetupDone: false, backupFolder: ''},
+    settings: {
+        currency: '$', timeFormat: 'system', dateFormat: 'system',
+        extensionSetupDone: false, backupFolder: '',
+    },
     currentProjectId: null,
     projects: [],
     entries: [],
