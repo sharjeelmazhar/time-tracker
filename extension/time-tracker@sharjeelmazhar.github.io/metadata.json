@@ -1,0 +1,8 @@
+{
+  "uuid": "time-tracker@sharjeelmazhar.github.io",
+  "name": "Time Tracker",
+  "description": "Quick Settings tile to start and stop the Time Tracker timer and switch between recent projects (needs the Time Tracker app from the same package).",
+  "shell-version": ["48", "49", "50", "51"],
+  "url": "https://github.com/sharjeelmazhar/time-tracker",
+  "version": 1
+}

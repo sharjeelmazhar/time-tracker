@@ -1,0 +1,45 @@
+/* Everything else comes from libadwaita; the accent-tinted window background is set in application.js. */
+
+.timer-card {
+    padding: 24px 18px;
+    transition: background-color 200ms ease-out;
+}
+
+.timer-card.running {
+    background-color: color-mix(in srgb, var(--accent-bg-color) 14%, var(--card-bg-color));
+}
+
+.timer-display {
+    font-size: 52px;
+    font-weight: 300;
+    font-feature-settings: "tnum";
+}
+
+.timer-card.running .timer-display {
+    color: var(--accent-color);
+}
+
+.stat {
+    padding: 12px 6px;
+}
+
+.stat-value {
+    font-size: 1.2em;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+}
+
+row.running-session .title {
+    color: var(--accent-color);
+}
+
+/* A soft accent outline lifts the white cards off the blush background in light mode
+   and is barely there in dark mode. */
+.timer-card,
+.stat {
+    border: 1px solid color-mix(in srgb, var(--accent-bg-color) 14%, transparent);
+}
+
+.timer-card.running {
+    border-color: color-mix(in srgb, var(--accent-bg-color) 40%, transparent);
+}

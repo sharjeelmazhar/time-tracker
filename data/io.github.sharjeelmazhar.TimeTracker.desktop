@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Time Tracker
+GenericName=Time Tracker
+Comment=Track the time you spend on your projects
+Exec=timetracker
+Icon=io.github.sharjeelmazhar.TimeTracker
+Terminal=false
+Categories=GNOME;GTK;Utility;
+Keywords=timer;stopwatch;hours;work;project;freelance;upwork;billing;
+StartupNotify=true
+DBusActivatable=true

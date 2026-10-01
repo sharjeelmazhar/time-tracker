@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- stopwatch: crown, ring and a hand; recoloured by GTK and GNOME Shell -->
+  <path fill="#222222" d="M6 0h4a1 1 0 0 1 0 2H9v1.070A6.500 6.500 0 1 1 7 3.070V2H6a1 1 0 0 1 0-2zm2 5a4.500 4.500 0 1 0 0 9 4.500 4.500 0 0 0 0-9zm0 1.500a1 1 0 0 1 1 1v1.586l1.207 1.207a1 1 0 0 1-1.414 1.414l-1.500-1.500A1 1 0 0 1 7 9.500v-2a1 1 0 0 1 1-1z"/>
+  <path fill="#222222" d="M12.293 2.793a1 1 0 0 1 1.414 0l.500.500a1 1 0 0 1-1.414 1.414l-.500-.500a1 1 0 0 1 0-1.414z"/>
+</svg>

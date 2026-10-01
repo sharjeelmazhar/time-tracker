@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=io.github.sharjeelmazhar.TimeTracker
+Exec=/usr/bin/timetracker --gapplication-service

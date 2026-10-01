@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/gjs -m /usr/share/timetracker/main.js "$@"
