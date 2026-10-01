@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk?version=4.0';
 
-import {earned, fmtDuration, fmtMoney, fmtWork, startOfDay, startOfMonth, startOfWeek} from './util.js';
+import {fmtDuration, fmtEarnings, fmtWork, startOfDay, startOfMonth, startOfWeek} from './util.js';
 
 const PERIODS = [
     {name: 'today', label: 'Today', since: startOfDay},
@@ -62,16 +62,13 @@ class OverviewPage extends Adw.NavigationPage {
         return PERIODS.find(p => p.name === this._period.activeName).since();
     }
 
-    // "3h 20m", plus " · $90.00" when any of the projects is paid
+    // "3h 20m", plus " · $90.00" (one amount per currency) when any of the projects is paid
     _sum(projects) {
         const store = this._store;
         const seconds = projects.reduce((sum, p) => sum + store.seconds(p.id, this._since), 0);
         if (!projects.some(p => p.billable))
             return fmtDuration(seconds);
-        const money = projects
-            .filter(p => p.billable)
-            .reduce((sum, p) => sum + earned(store.seconds(p.id, this._since), p.rate), 0);
-        return `${fmtDuration(seconds)} · ${fmtMoney(money, store.settings.currency)}`;
+        return `${fmtDuration(seconds)} · ${fmtEarnings(store.earnings(projects, this._since), store.settings.currency)}`;
     }
 
     refresh() {
@@ -95,7 +92,7 @@ class OverviewPage extends Adw.NavigationPage {
             for (const project of projects) {
                 const amount = new Gtk.Label({cssClasses: ['numeric']});
                 this._updaters.push(() => (amount.label =
-                    fmtWork(store.seconds(project.id, this._since), project, store.settings.currency)));
+                    fmtWork(store.seconds(project.id, this._since), project, store.currencyOf(project))));
                 const row = new Adw.ActionRow({
                     title: project.name,
                     subtitle: project.finished ? 'Finished' : '',
@@ -123,7 +120,7 @@ class OverviewPage extends Adw.NavigationPage {
         const store = this._store;
         this._time.label = fmtDuration(store.seconds(null, this._since));
         this._money.visible = store.projects.some(p => p.billable);
-        this._money.label = `${fmtMoney(store.money(this._since), store.settings.currency)} earned`;
+        this._money.label = `${fmtEarnings(store.earnings(store.projects, this._since), store.settings.currency)} earned`;
         for (const update of this._updaters)
             update();
     }

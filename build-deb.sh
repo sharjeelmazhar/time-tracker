@@ -23,6 +23,9 @@ install -Dm644 -t "$ROOT/usr/share/gnome-shell/extensions/$UUID" "extension/$UUI
 install -Dm644 -t "$ROOT/usr/share/gnome-shell/extensions/$UUID/icons" "extension/$UUID/icons/time-tracker-symbolic.svg"
 install -Dm644 -t "$ROOT/usr/share/$PKG/icons" src/icons/*.svg
 install -Dm644 LICENSE "$ROOT/usr/share/doc/$PKG/copyright"
+# the app's own apt repository, so that "apt upgrade" brings new versions
+install -Dm644 -t "$ROOT/usr/share/keyrings" data/timetracker-archive-keyring.gpg
+install -Dm644 -t "$ROOT/etc/apt/sources.list.d" data/timetracker.sources
 
 install -d "$ROOT/DEBIAN"
 cat > "$ROOT/DEBIAN/control" <<CONTROL
@@ -31,7 +34,7 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: all
-Depends: gjs (>= 1.80), gir1.2-gtk-4.0 (>= 4.16), gir1.2-adw-1 (>= 1.7)
+Depends: gjs (>= 1.80), gir1.2-gtk-4.0 (>= 4.16), gir1.2-adw-1 (>= 1.7), gir1.2-soup-3.0, gir1.2-secret-1
 Recommends: gnome-shell (>= 48)
 Installed-Size: $(du -sk --exclude=DEBIAN "$ROOT" | cut -f1)
 Maintainer: Sharjeel M. Rajput <sharjeelmazhar@gmail.com>
@@ -42,6 +45,7 @@ Description: Track the time you spend on your projects
  and stops the timer and switches between the three most recent projects
  without opening the app.
 CONTROL
+echo /etc/apt/sources.list.d/timetracker.sources > "$ROOT/DEBIAN/conffiles"
 
 mkdir -p dist
 dpkg-deb --root-owner-group --build "$ROOT" "dist/${PKG}_${VERSION}_all.deb"

@@ -10,10 +10,11 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk?version=4.0';
 
+import {clearToken, loadToken, saveToken, updateBackup} from './cloud.js';
 import {APP_ID, SRC_DIR} from './config.js';
 import {AboutDialog, PreferencesDialog} from './dialogs.js';
 import {HEARTBEAT_SECONDS, Store} from './store.js';
-import {configureFormats, fmtTime, startOfDay} from './util.js';
+import {configureFormats, fmtTime, nowSec, startOfDay} from './util.js';
 import {Window} from './window.js';
 
 const EXTENSION_UUID = 'time-tracker@sharjeelmazhar.github.io';
@@ -51,6 +52,8 @@ class Application extends Adw.Application {
         this._beatId = 0;
         this._backupId = 0;
         this.backupError = null;
+        this.onlineError = null;
+        this.onlineSavedAt = 0;
     }
 
     vfunc_dbus_register(connection, objectPath) {
@@ -126,36 +129,77 @@ class Application extends Adw.Application {
 
     // Changes come in bursts (typing the currency, stop then start), so wait for a pause.
     _scheduleBackup() {
-        if (!this.store.settings.backupFolder || this._backupId)
+        const {backupFolder, gistId} = this.store.settings;
+        if (!(backupFolder || gistId) || this._backupId)
             return;
         this.hold();
         this._backupId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
             this._backupId = 0;
-            this._writeBackup();
+            const text = this.store.serialize();
+            Promise.all([this._writeFolderBackup(text), this._writeOnlineBackup(text)])
+                .finally(() => this.release());
             return GLib.SOURCE_REMOVE;
         });
     }
 
-    _writeBackup() {
+    // Neither of these rejects: a failure is kept for Preferences to show.
+    _writeFolderBackup(text) {
         const folder = this.store.settings.backupFolder;
-        if (!folder) {
-            this.release();
-            return;
-        }
+        if (!folder)
+            return Promise.resolve();
         const file = Gio.File.new_for_uri(folder).get_child(BACKUP_NAME);
-        const bytes = new GLib.Bytes(new TextEncoder().encode(this.store.serialize()));
-        file.replace_contents_bytes_async(bytes, null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null,
-            (_file, result) => {
-                try {
-                    file.replace_contents_finish(result);
-                    this.backupError = null;
-                } catch (e) {
-                    // shown in Preferences, next to the folder
-                    this.backupError = e.message;
-                    console.warn(`Time Tracker: backup to ${file.get_parse_name()} failed: ${e.message}`);
-                }
-                this.release();
-            });
+        const bytes = new GLib.Bytes(new TextEncoder().encode(text));
+        return new Promise(resolve => {
+            file.replace_contents_bytes_async(bytes, null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null,
+                (_file, result) => {
+                    try {
+                        file.replace_contents_finish(result);
+                        this.backupError = null;
+                    } catch (e) {
+                        this.backupError = e.message;
+                        console.warn(`Time Tracker: backup to ${file.get_parse_name()} failed: ${e.message}`);
+                    }
+                    resolve();
+                });
+        });
+    }
+
+    async _writeOnlineBackup(text) {
+        const id = this.store.settings.gistId;
+        if (!id)
+            return;
+        try {
+            if (!this.onlineToken)
+                throw new Error('The GitHub token is no longer in the keyring. Disconnect and connect again');
+            await updateBackup(this.onlineToken, id, text);
+            this.onlineError = null;
+            this.onlineSavedAt = nowSec();
+        } catch (e) {
+            this.onlineError = e.message;
+            console.warn(`Time Tracker: online backup failed: ${e.message}`);
+        }
+    }
+
+    // the token for the online backup, read from the keyring the first time it is needed
+    get onlineToken() {
+        this._onlineToken ??= loadToken();
+        return this._onlineToken;
+    }
+
+    // Start backing up to the gist `id` with `token`; the first upload follows at once.
+    connectOnline(token, id) {
+        saveToken(token);
+        this._onlineToken = token;
+        this.onlineError = null;
+        this.store.setSetting('gistId', id);
+    }
+
+    // Stop backing up online. The gist itself stays in the GitHub account.
+    disconnectOnline() {
+        clearToken();
+        this._onlineToken = null;
+        this.onlineError = null;
+        this.store.setSetting('gistId', '');
     }
 
     _emitChanged() {

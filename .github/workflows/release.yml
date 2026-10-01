@@ -1,18 +1,40 @@
-# Push a tag like v1.0.0 and the .deb is attached to a GitHub release.
+# Push a tag like v1.0.0: the .deb is attached to a GitHub release and published in the
+# apt repository on GitHub Pages.
 name: Release
 on:
   push:
     tags: ['v*']
 permissions:
   contents: write
+  pages: write
+  id-token: write
 jobs:
   deb:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
     steps:
       - uses: actions/checkout@v4
+      # checked first, so a missing key cannot leave a release without its apt repository
+      - name: Check the signing key
+        run: '[ -n "$APT_SIGNING_KEY" ] || { echo "::error::Set the APT_SIGNING_KEY secret (see README)"; exit 1; }'
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
       - run: ./build-deb.sh
       # a second copy under a name that never changes, so the "latest" download link is stable
       - run: cp dist/timetracker_*_all.deb dist/timetracker.deb
       - run: gh release create "$GITHUB_REF_NAME" dist/*.deb --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+      # the apt repository on GitHub Pages, which installed copies get their updates from
+      - name: Build the apt repository
+        run: |
+          rm dist/timetracker.deb
+          echo "$APT_SIGNING_KEY" | gpg --batch --import
+          ./build-apt-repo.sh
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4

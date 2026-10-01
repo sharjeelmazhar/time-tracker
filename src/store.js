@@ -15,7 +15,7 @@ const emptyData = () => ({
     version: VERSION,
     settings: {
         currency: '$', timeFormat: 'system', dateFormat: 'system',
-        extensionSetupDone: false, backupFolder: '',
+        extensionSetupDone: false, backupFolder: '', gistId: '',
     },
     currentProjectId: null,
     projects: [],
@@ -77,10 +77,10 @@ export class Store {
         this.checkBackup(text);
         const parsed = JSON.parse(text);
         // what belongs to this computer rather than to the history stays as it is
-        const {extensionSetupDone, backupFolder} = this.data.settings;
+        const {extensionSetupDone, backupFolder, gistId} = this.data.settings;
         this.data = {
             ...emptyData(), ...parsed,
-            settings: {...emptyData().settings, ...parsed.settings, extensionSetupDone, backupFolder},
+            settings: {...emptyData().settings, ...parsed.settings, extensionSetupDone, backupFolder, gistId},
         };
         // a timer that was running when the backup was written is not running here
         this.data.entries = this.data.entries.filter(e => e.end !== null);
@@ -132,10 +132,11 @@ export class Store {
             .sort((a, b) => a.localeCompare(b));
     }
 
-    addProject({name, topic, billable, rate}) {
+    // `currency` is a symbol, or '' to use the default from Preferences
+    addProject({name, topic, billable, rate, currency = ''}) {
         const project = {
             id: GLib.uuid_string_random(),
-            name, topic, billable, rate,
+            name, topic, billable, rate, currency,
             finished: false,
             createdAt: nowSec(),
             lastUsed: nowSec(),
@@ -307,11 +308,20 @@ export class Store {
         return total;
     }
 
-    // Money earned across paid projects between two instants.
-    money(from = 0, to = Infinity) {
-        return this.data.projects
-            .filter(p => p.billable)
-            .reduce((sum, p) => sum + this.seconds(p.id, from, to) / 3600 * p.rate, 0);
+    // the symbol a project is paid in
+    currencyOf(project) {
+        return project.currency || this.data.settings.currency;
+    }
+
+    // Money earned on the paid ones among `projects` between two instants, as a Map of
+    // currency symbol -> amount, because projects need not be paid in the same currency.
+    earnings(projects = this.data.projects, from = 0, to = Infinity) {
+        const totals = new Map();
+        for (const p of projects.filter(project => project.billable)) {
+            const currency = this.currencyOf(p).trim();
+            totals.set(currency, (totals.get(currency) ?? 0) + this.seconds(p.id, from, to) / 3600 * p.rate);
+        }
+        return totals;
     }
 
     // What the Quick Settings tile needs to draw itself.

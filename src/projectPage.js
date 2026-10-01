@@ -126,7 +126,7 @@ class ProjectPage extends Adw.NavigationPage {
         this.title = project.name;
         this._topic.label = project.finished ? `${project.topic} · Finished` : project.topic;
         this._earned.visible = this._rate.visible = project.billable;
-        this._rate.label = `${fmtMoney(project.rate, store.settings.currency)} per hour`;
+        this._rate.label = `${fmtMoney(project.rate, store.currencyOf(project))} per hour`;
         this._button.visible = !project.finished;
         this._buttonContent.set({
             iconName: this._isRunning ? 'media-playback-stop-symbolic' : 'media-playback-start-symbolic',
@@ -235,9 +235,9 @@ class ProjectPage extends Adw.NavigationPage {
             return;
         const total = store.seconds(this._id);
         this._total.label = fmtDuration(total);
-        this._earned.label = `${fmtMoney(earned(total, project.rate), store.settings.currency)} earned`;
+        this._earned.label = `${fmtMoney(earned(total, project.rate), store.currencyOf(project))} earned`;
         for (const {since, label} of this._periods)
-            label.label = fmtWork(store.seconds(this._id, since()), project, store.settings.currency);
+            label.label = fmtWork(store.seconds(this._id, since()), project, store.currencyOf(project));
         this._updateRunningSession?.();
     }
 
@@ -261,7 +261,7 @@ class ProjectPage extends Adw.NavigationPage {
         const project = this._project;
         const header = ['Date', 'Started', 'Stopped', 'Hours'];
         if (project.billable)
-            header.push(`Amount (${store.settings.currency.trim()})`);
+            header.push(`Amount (${store.currencyOf(project).trim()})`);
         const lines = [header.map(csvField).join(',')];
         for (const entry of store.entriesFor(this._id).reverse()) {
             const sec = (entry.end ?? nowSec()) - entry.start;

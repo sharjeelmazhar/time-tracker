@@ -4,8 +4,10 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk?version=4.0';
 
+import {readBackup} from './cloud.js';
 import {APP_ID, AUTHOR, AUTHOR_URL, REPO_URL, SRC_DIR, VERSION} from './config.js';
-import {dateHint, fmtDate, fmtTime, nowSec, parseDateTime, systemFormats, timeHint} from './util.js';
+import {OnlineBackupDialog} from './onlineDialog.js';
+import {CURRENCIES, dateHint, fmtDate, fmtTime, nowSec, parseDateTime, systemFormats, timeHint} from './util.js';
 
 // Cancel on the left, the confirming button on the right, like every GNOME form dialog.
 function formHeader(dialog, saveLabel) {
@@ -27,11 +29,38 @@ function formBody(header, groups) {
     return view;
 }
 
+// Two rows for picking a currency: the common ones by name, and "Other…", which reveals a
+// field where any symbol can be typed or pasted. With `inherit` (the default symbol) the
+// list starts with "Default", whose value is ''. `value` is '' while "Other…" is still empty.
+function currencyChooser(symbol, inherit = null) {
+    const values = [...inherit === null ? [] : [''], ...CURRENCIES.map(([s]) => s)];
+    const labels = [
+        ...inherit === null ? [] : [`Default (${inherit.trim()})`],
+        ...CURRENCIES.map(([s, name]) => `${s}  ${name}`),
+        'Other…',
+    ];
+    const combo = new Adw.ComboRow({title: 'Currency', model: Gtk.StringList.new(labels)});
+    const entry = new Adw.EntryRow({title: 'Currency symbol, like ¥ or CAD'});
+    const known = values.indexOf(symbol.trim());
+    combo.selected = known >= 0 ? known : values.length;
+    if (known < 0)
+        entry.text = symbol.trim();
+    return {
+        combo, entry,
+        get isOther() {
+            return combo.selected >= values.length;
+        },
+        get value() {
+            return this.isOther ? entry.text.trim() : values[combo.selected];
+        },
+    };
+}
+
 // Create a project, or edit one when `project` is given.
 export const ProjectDialog = GObject.registerClass(
 class ProjectDialog extends Adw.Dialog {
     constructor(store, project = null, topic = null) {
-        super({title: project ? 'Edit Project' : 'New Project', contentWidth: 440, contentHeight: 540});
+        super({title: project ? 'Edit Project' : 'New Project', contentWidth: 440, contentHeight: 640});
         this._store = store;
         this._project = project;
         this._topics = store.topics();
@@ -69,17 +98,20 @@ class ProjectDialog extends Adw.Dialog {
             subtitle: 'Work out earnings from an hourly rate',
             active: project?.billable ?? false,
         });
+        this._currency = currencyChooser(project?.currency ?? '', store.settings.currency);
         this._rate = new Adw.SpinRow({
-            title: `Hourly rate (${store.settings.currency.trim() || 'money'})`,
             adjustment: new Gtk.Adjustment({lower: 0, upper: 1000000, stepIncrement: 1, pageIncrement: 10}),
             digits: 2,
             value: project?.rate ?? 0,
         });
-        this._paid.bind_property('active', this._rate, 'visible', GObject.BindingFlags.SYNC_CREATE);
-
         const money = new Adw.PreferencesGroup();
         money.add(this._paid);
+        money.add(this._currency.combo);
+        money.add(this._currency.entry);
         money.add(this._rate);
+        this._paid.connect('notify::active', () => this._sync());
+        this._currency.combo.connect('notify::selected', () => this._sync());
+        this._currency.entry.connect('changed', () => this._sync());
 
         this.set_child(formBody(header, [about, money]));
         this.focusWidget = this._topics.length ? this._name : this._topicEntry;
@@ -99,8 +131,15 @@ class ProjectDialog extends Adw.Dialog {
     }
 
     _sync() {
+        const paid = this._paid.active;
+        const symbol = this._currency.value || this._store.settings.currency.trim();
         this._topicEntry.visible = this._isNewTopic;
-        this._saveButton.sensitive = this._name.text.trim() !== '' && this._topic !== '';
+        this._currency.combo.visible = this._rate.visible = paid;
+        this._currency.entry.visible = paid && this._currency.isOther;
+        this._rate.title = `Hourly rate (${symbol})`;
+        // "Other…" with nothing typed yet is not a currency
+        const currencyOk = !paid || !this._currency.isOther || this._currency.value !== '';
+        this._saveButton.sensitive = this._name.text.trim() !== '' && this._topic !== '' && currencyOk;
     }
 
     _onSave() {
@@ -111,6 +150,7 @@ class ProjectDialog extends Adw.Dialog {
             topic: this._topic,
             billable: this._paid.active,
             rate: this._rate.value,
+            currency: this._currency.value,
         };
         if (this._project)
             this._store.updateProject(this._project.id, fields);
@@ -204,13 +244,21 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         super();
         this._store = store;
 
-        const currency = new Adw.EntryRow({title: 'Currency symbol', text: store.settings.currency});
-        currency.connect('changed', () => store.setSetting('currency', currency.text));
+        const currency = currencyChooser(store.settings.currency);
+        const syncCurrency = () => {
+            currency.entry.visible = currency.isOther;
+            if (currency.value)
+                store.setSetting('currency', currency.value);
+        };
+        currency.combo.connect('notify::selected', syncCurrency);
+        currency.entry.connect('changed', syncCurrency);
+        currency.entry.visible = currency.isOther;
         const earnings = new Adw.PreferencesGroup({
             title: 'Earnings',
-            description: 'Shown in front of amounts on paid projects.',
+            description: 'What paid projects are paid in, unless a project says otherwise.',
         });
-        earnings.add(currency);
+        earnings.add(currency.combo);
+        earnings.add(currency.entry);
 
         // each option is [stored value, label]; the subtitle says what "same as system" means now
         const choice = (title, key, systemName, options) => {
@@ -239,18 +287,38 @@ class PreferencesDialog extends Adw.PreferencesDialog {
             return button;
         };
 
+        // online: a secret gist in the user's GitHub account
+        this._app = Gio.Application.get_default();
+        this._onlineRow = new Adw.ActionRow({title: 'Online backup', subtitleLines: 2});
+        this._onlineButton = new Gtk.Button({valign: Gtk.Align.CENTER});
+        this._onlineButton.connect('clicked', () => {
+            if (store.settings.gistId) {
+                this._app.disconnectOnline();
+                this._syncOnlineRow();
+                return;
+            }
+            const dialog = new OnlineBackupDialog(store);
+            dialog.connect('closed', () => this._syncOnlineRow());
+            dialog.present(this);
+        });
+        this._onlineRow.add_suffix(this._onlineButton);
+        this._onlineRestore = new Adw.ButtonRow({title: 'Restore from the Online Backup…'});
+        this._onlineRestore.connect('activated', () => this._restoreOnline());
+
         // a copy of the history, rewritten after every change
         this._backupRow = new Adw.ActionRow({title: 'Backup folder', subtitleLines: 2});
         this._forget = flatButton('edit-clear-symbolic', 'Stop Backing Up', () => this._setBackupFolder(''));
         this._backupRow.add_suffix(this._forget);
         this._backupRow.add_suffix(flatButton('folder-open-symbolic', 'Choose Folder', () => this._chooseBackupFolder()));
-        const restore = new Adw.ButtonRow({title: 'Restore from a Backup…'});
+        const restore = new Adw.ButtonRow({title: 'Restore from a Backup File…'});
         restore.connect('activated', () => this._chooseRestoreFile());
         const backup = new Adw.PreferencesGroup({
             title: 'Backup',
-            description: 'Keep a copy of your history somewhere that survives a reinstall, such as ' +
-                'another drive or a folder that syncs to the cloud. It is updated after every change.',
+            description: 'Keep a copy of your history somewhere that survives a reinstall: online in ' +
+                'your GitHub account, or in a folder on another drive. Copies are updated after every change.',
         });
+        backup.add(this._onlineRow);
+        backup.add(this._onlineRestore);
         backup.add(this._backupRow);
         backup.add(restore);
 
@@ -269,6 +337,28 @@ class PreferencesDialog extends Adw.PreferencesDialog {
         page.add(backup);
         this.add(page);
         this._syncBackupRow();
+        this._syncOnlineRow();
+    }
+
+    _syncOnlineRow() {
+        const connected = !!this._store.settings.gistId;
+        const {onlineError, onlineSavedAt} = this._app;
+        this._onlineButton.label = connected ? 'Disconnect' : 'Connect…';
+        this._onlineRestore.visible = connected;
+        if (!connected)
+            this._onlineRow.subtitle = 'Not connected';
+        else if (onlineError)
+            this._onlineRow.subtitle = `Could not save: ${onlineError}`;
+        else if (onlineSavedAt)
+            this._onlineRow.subtitle = `Connected to GitHub · saved at ${fmtTime(onlineSavedAt)}`;
+        else
+            this._onlineRow.subtitle = 'Connected to GitHub';
+    }
+
+    _restoreOnline() {
+        readBackup(this._app.onlineToken, this._store.settings.gistId)
+            .then(text => this._confirmRestore(text))
+            .catch(e => this.add_toast(new Adw.Toast({title: e.message})));
     }
 
     _syncBackupRow() {

@@ -8,7 +8,7 @@ import Pango from 'gi://Pango';
 import {ProjectDialog} from './dialogs.js';
 import {OverviewPage} from './overviewPage.js';
 import {ProjectPage} from './projectPage.js';
-import {earned, fmtClock, fmtDuration, fmtMoney, startOfDay, startOfMonth, startOfWeek, fmtWork} from './util.js';
+import {earned, fmtClock, fmtDuration, fmtEarnings, fmtMoney, startOfDay, startOfMonth, startOfWeek, fmtWork} from './util.js';
 
 const TICK_MS = 500;
 
@@ -155,7 +155,7 @@ class HomePage extends Adw.NavigationPage {
         }
         row.add_suffix(new Gtk.Image({iconName: 'go-next-symbolic', cssClasses: ['dim-label']}));
 
-        const update = () => (row.subtitle = fmtWork(store.seconds(project.id), project, store.settings.currency));
+        const update = () => (row.subtitle = fmtWork(store.seconds(project.id), project, store.currencyOf(project)));
         update();
         if (isRunning)
             this._updateRunningRow = update;
@@ -234,12 +234,11 @@ class HomePage extends Adw.NavigationPage {
             time.label = fmtDuration(seconds);
             money.visible = !!current?.billable;
             if (current?.billable)
-                money.label = fmtMoney(earned(seconds, current.rate), store.settings.currency);
+                money.label = fmtMoney(earned(seconds, current.rate), store.currencyOf(current));
         }
-        const earnedEver = store.money();
         const everything = fmtDuration(store.seconds());
         this._overviewRow.subtitle = store.projects.some(p => p.billable)
-            ? `${everything} · ${fmtMoney(earnedEver, store.settings.currency)} in total`
+            ? `${everything} · ${fmtEarnings(store.earnings(), store.settings.currency)} in total`
             : `${everything} in total`;
         this._updateRunningRow?.();
     }

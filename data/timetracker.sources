@@ -1,0 +1,5 @@
+# Updates for Time Tracker, so that "sudo apt upgrade" brings new versions.
+Types: deb
+URIs: https://sharjeelmazhar.github.io/time-tracker
+Suites: ./
+Signed-By: /usr/share/keyrings/timetracker-archive-keyring.gpg

@@ -23,9 +23,30 @@ export function fmtDuration(sec) {
     return h ? `${h}h ${pad(m)}m` : `${m}m`;
 }
 
+// The currencies offered by name; any other symbol can be typed or pasted in.
+export const CURRENCIES = [
+    ['$', 'US Dollar'],
+    ['Rs', 'Pakistani Rupee'],
+    ['€', 'Euro'],
+    ['£', 'British Pound'],
+    ['₹', 'Indian Rupee'],
+    ['AED', 'UAE Dirham'],
+    ['SAR', 'Saudi Riyal'],
+];
+
+// (1375.5, '$') -> "$1,375.50"; (400, 'Rs') -> "Rs 400.00": a symbol made of letters gets a space
 export function fmtMoney(amount, currency) {
+    const symbol = currency.trim();
     const n = amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    return `${currency}${n}`;
+    return /[\p{L}.]$/u.test(symbol) ? `${symbol} ${n}` : `${symbol}${n}`;
+}
+
+// Earnings per currency (a Map of symbol -> amount) -> "$93.97 + Rs 1,200.00".
+// Amounts in different currencies are never added together.
+export function fmtEarnings(earnings, emptyCurrency) {
+    if (!earnings.size)
+        return fmtMoney(0, emptyCurrency);
+    return [...earnings].map(([currency, amount]) => fmtMoney(amount, currency)).join(' + ');
 }
 
 export const earned = (sec, rate) => sec / 3600 * rate;
